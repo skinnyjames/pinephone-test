@@ -1,0 +1,5 @@
+xsmall: 17
+small: 34
+med: 68
+large: 102
+xlarge: 136
