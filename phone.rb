@@ -1,10 +1,3 @@
-class PhoneContact < Hokusai::Block
-  template <<-EOF
-  [template]
-    virtual
-  EOF
-end
-
 class PhoneKey < Hokusai::Block
   template <<-EOF
   [template]
@@ -14,7 +7,6 @@ class PhoneKey < Hokusai::Block
   EOF
 
   uses(empty: Hokusai::Blocks::Empty)
-
 
   inject :theme
   computed! :key
@@ -74,15 +66,15 @@ class PhoneDialer < Hokusai::Block
   }
 
   buttonPrimary {
-    background: rgb(45, 45, 45);
+    background: rgb(45,45,45);
   }
 
   buttonSecondary {
-    background: rgb(34, 34, 34);
+    background: rgb(34,34,34);
   }
 
   phoneButton {
-    background: rgb(0, 0, 0, 0);
+    background: rgb(0,0,0,0);
   }
 
   phoneButton@click {
@@ -412,13 +404,13 @@ class PhoneCall < Hokusai::Block
 end
 
 class Phone < Hokusai::Block
-  template <<~EOF
+  template <<-EOF
   [template]
-  vblock
-    [if="active"]
-      call { @disconnect="deactivate" }
-    [else]
-      dialer { @dial="activate" }
+    vblock
+      [if="active"]
+        call { @disconnect="deactivate" }
+      [else]
+        dialer { @dial="activate" }
   EOF
 
   uses(
@@ -433,21 +425,41 @@ class Phone < Hokusai::Block
 
   def deactivate
     self.active = false
-   p ["ending #{@id}"]
-    @buzz.call("EndFeedback", [@id])
+    # hangup
+	@modem.object(@call)
+          .interface("org.freedesktop.ModemManager1.Call")
+          .call("HangUp")
+    @call = nil
+
+	# route audio back
+  	IO.popen(['pactl', 'set-card-profile', 'alsa_card.platform-sound', "'HiFi (Mic, Speaker)'"].join(" "))
+    #@buzz.call("EndFeedback", [@id])
   end
 
   def activate(number)
+    obj = @modem.object("/org/freedesktop/ModemManager1/Modem/0")
+    # start call object
+	@call = obj.interface("org.freedesktop.ModemManager1.Modem.Voice")
+                .call("CreateCall", [{"number" => ["s", "+1#{number}"]}])
+
+	# route audio (todo: use callaudiod)
+	IO.popen(['pactl', 'set-card-profile', 'alsa_card.platform-sound', "'Voice Call (Earpiece, Mic)'"].join(" "))
+
+	# start call
+	@modem.object(@call)
+		.interface("org.freedesktop.ModemManager1.Call")
+		.call("Start")
+	  
     self.active = true
-    @id ||= @buzz.call("TriggerFeedback", ["test", "phone-incoming-call", {}, 20])
+    # @id = @buzz.call("TriggerFeedback", ["test", "phone-incoming-call", {}, 20])
   end
 
   def initialize(**args)
     @active = false
-    @buzz = SDBus.user.service("org.sigxcpu.Feedback")
-			.object("/org/sigxcpu/Feedback")
-			.interface("org.sigxcpu.Feedback")      
-
+    @modem = SDBus.system.service("org.freedesktop.ModemManager1")
+    # @buzz = SDBus.user.service("org.sigxcpu.Feedback")
+		# 	.object("/org/sigxcpu/Feedback")
+		# 	.interface("org.sigxcpu.Feedback")      
     super
   end
 end
